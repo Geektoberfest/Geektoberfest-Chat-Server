@@ -1,0 +1,34 @@
+/* Each section gets its own colour, so the page reads as separate areas rather than one flat tint. */
+body { background: #eef7f3; }
+
+.topbar { background: #ffe3cc; }
+.topbar-note { color: #8a4b2a; }
+.identity-field { background: #ffffff; border-color: #ffc09a; }
+
+.chat-shell { background: #fffdf5; }
+
+.room-rail { background: #d9f5e6; border-right-color: #a9e2c4; }
+.rail-bottom { border-top-color: #a9e2c4; }
+.room-current { background: #ffffff; border-radius: 10px; padding: 4px 6px; }
+
+.conversation-header { background: #fff1b8; border-bottom-color: #f1d973; }
+
+.message-list { background: #efe6ff; }
+.message-row .message-bubble { background: #ffd9ea; color: #5a2a45; }
+.message-row.is-mine .message-bubble { background: #6b3fa0; color: #ffffff; }
+.message-row .message-avatar { background: #ffc7dd; color: #7a2d55; }
+.message-row.is-mine .message-avatar { background: #d9c6f5; color: #4a2475; }
+
+.composer { background: #ffffff; border-color: #f7b6d2; }
+.notice { background: #fff1e0; border-radius: 8px; }
+.typing-indicator { background: #fff6dc; border-radius: 8px; }
+
+.search-results, .reports-panel { background: #d9ecff; border-bottom-color: #a6cdf2; }
+.search-item { border-top-color: #a6cdf2; }
+.dm-rail .rail-heading, .room-nav .rail-heading { color: #3a6ea5; }
+.dm-view { background: #efe6ff; }
+.dm-header { background: #fff1b8; border-bottom-color: #f1d973; }
+.dm-threads, .room-nav-list { background: transparent; }
+
+.auth-shell { background: #e6fff3; }
+.auth-card { background: #ffffff; }
