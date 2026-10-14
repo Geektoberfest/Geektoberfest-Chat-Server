@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+﻿import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
@@ -15,6 +15,7 @@ import { canManageModerators, canModerate, getRole, isStaff } from './utils/perm
 import { authRouter, authenticateSocket, getJwtSecret } from './auth.js';
 
 const REDIS_CHAT_CHANNEL = 'CHAT_ROOMS';
+const activeRoomUsers = new Map();
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173,http://localhost:5174')
   .split(',')
@@ -122,6 +123,12 @@ subClient.on('message', async (channel, message) => {
       case 'message_deleted':
         io.to(payload.room).emit('message_deleted', { messageId: payload.messageId });
         break;
+      case 'message_reactions':
+        io.to(payload.room).emit('message_reactions', {
+          messageId: payload.messageId,
+          reactions: payload.reactions,
+        });
+        break;
       case 'reports_changed':
         io.to(payload.room).emit('reports_changed');
         break;
@@ -139,6 +146,29 @@ subClient.on('message', async (channel, message) => {
     console.error(`Invalid Redis chat payload: ${error.message}`);
   }
 });
+
+
+async function broadcastRoomPresence(roomName, excludedSocketId = null) {
+  const sockets = await io.in(roomName).fetchSockets();
+  const users = new Map();
+
+  for (const member of sockets) {
+    if (member.id === excludedSocketId) continue;
+
+    const user = member.data.user;
+    if (!user?.id || !user?.username) continue;
+
+    users.set(user.id, {
+      id: user.id,
+      username: user.username,
+    });
+  }
+
+  io.to(roomName).emit('room_presence', {
+    room: roomName,
+    users: [...users.values()],
+  });
+}
 
 io.on('connection', (socket) => {
   const { id: senderId, username: sender } = socket.data.user;
@@ -182,24 +212,107 @@ io.on('connection', (socket) => {
 
     socket.join(room);
     socket.emit('identity', { userId: senderId });
+
+    await broadcastRoomPresence(room);
+
     if (roomDoc) socket.emit('room_state', roomState(roomDoc));
 
     try {
-      const chatHistory = await Message.find({ room }).sort({ createdAt: 1 }).limit(20).lean();
+      // Fetch the newest 20 messages then reverse so they display oldest-to-newest.
+      const chatHistory = await Message.find({ room })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(20)
+        .lean();
+      chatHistory.reverse();
       socket.emit('chat_history', chatHistory.map((message) => ({
         id: String(message._id),
         sender: message.sender,
         senderId: message.senderId,
+        clientId: message.clientId,
         text: message.deleted ? '' : message.text,
         deleted: Boolean(message.deleted),
         timestamp: message.timestamp,
         createdAt: message.createdAt,
+
+        reactions: (message.reactions || []).map((reaction) => ({
+          emoji: reaction.emoji,
+          userIds: reaction.userIds || [],
+        })),
+
       })));
     } catch (error) {
       console.error(`Failed to fetch chat history: ${error.message}`);
       socket.emit('chat_error', 'Could not load chat history.');
     }
   }));
+
+  // Cursor-based pagination for older messages.
+  // The client supplies the ID of its oldest currently-loaded message as the cursor.
+  // Response shape: { messages: [...], hasMore: boolean } or { error: string }.
+  socket.on('load_older_messages', async (data, ack) => {
+    if (typeof ack !== 'function') return; // requires acknowledgement
+    try {
+      const room = cleanRoomName(data?.room);
+      const cursorId = data?.before;
+
+      if (typeof cursorId !== 'string' || !mongoose.isValidObjectId(cursorId)) {
+        return ack({ error: 'Invalid cursor.' });
+      }
+
+      // Confirm the socket is still in this room and not banned.
+      const roomDoc = await Room.findOne({ name: room }).lean();
+      if (roomDoc?.bannedIds.includes(senderId)) {
+        return ack({ error: 'You have been removed from this room.' });
+      }
+      if (!socket.rooms.has(room)) {
+        return ack({ error: 'Join the room before loading its history.' });
+      }
+
+      // Find the anchor document so we can use its (createdAt, _id) as a compound cursor.
+      // Keeping the room in this lookup prevents a cursor from another room being accepted.
+      const anchor = await Message.findOne({ _id: cursorId, room }).select('createdAt _id').lean();
+      if (!anchor) {
+        return ack({ error: 'Invalid cursor.' });
+      }
+
+      // Fetch one extra record to know whether still more history exists.
+      const PAGE_SIZE = 20;
+      const raw = await Message.find({
+        room,
+        $or: [
+          { createdAt: { $lt: anchor.createdAt } },
+          { createdAt: anchor.createdAt, _id: { $lt: anchor._id } },
+        ],
+      })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(PAGE_SIZE + 1)
+        .lean();
+
+      const hasMore = raw.length > PAGE_SIZE;
+      const page = raw.slice(0, PAGE_SIZE);
+      page.reverse(); // return in chronological order
+
+      ack({
+        messages: page.map((message) => ({
+          id: String(message._id),
+          sender: message.sender,
+          senderId: message.senderId,
+          clientId: message.clientId,
+          text: message.deleted ? '' : message.text,
+          deleted: Boolean(message.deleted),
+          timestamp: message.timestamp,
+          createdAt: message.createdAt,
+        })),
+        hasMore,
+      });
+    } catch (error) {
+      if (error instanceof UserError) {
+        return ack({ error: error.message });
+      }
+      console.error(`Failed to load older messages: ${error.message}`);
+      ack({ error: 'Could not load older messages.' });
+    }
+  });
 
   // The sender always comes from the authenticated socket, never from the payload.
   socket.on('send_message', handle(async (data, ack) => {
@@ -250,6 +363,60 @@ io.on('connection', (socket) => {
       respond({ ok: false, error: 'Could not send your message.' });
     }
   }));
+
+
+  socket.on('toggle_reaction', handle(async (data) => {
+    const room = cleanRoomName(data?.room);
+    const messageId = cleanMessageId(data?.messageId);
+    const emoji = data?.emoji;
+
+    const allowedEmojis = ['ðŸ‘', 'â¤ï¸', 'ðŸ˜‚', 'ðŸ˜®', 'ðŸ˜¢', 'ðŸŽ‰'];
+
+    if (!allowedEmojis.includes(emoji)) {
+      throw new UserError('Invalid reaction.');
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message || message.room !== room || message.deleted) {
+      throw new UserError('Message not found.');
+    }
+
+    if (!Array.isArray(message.reactions)) {
+      message.reactions = [];
+    }
+
+    let reaction = message.reactions.find((item) => item.emoji === emoji);
+
+    if (!reaction) {
+      message.reactions.push({ emoji, userIds: [senderId] });
+    } else {
+      const userIndex = reaction.userIds.indexOf(senderId);
+
+      if (userIndex >= 0) {
+        reaction.userIds.splice(userIndex, 1);
+      } else {
+        reaction.userIds.push(senderId);
+      }
+
+      if (reaction.userIds.length === 0) {
+        message.reactions = message.reactions.filter(
+          (item) => item.emoji !== emoji,
+        );
+      }
+    }
+
+    await message.save();
+
+    await publishEvent('message_reactions', {
+      room,
+      messageId: String(message._id),
+      reactions: message.reactions.map((item) => ({
+        emoji: item.emoji,
+        userIds: item.userIds,
+      })),
+    });
+  }));
+
 
   const setMuted = (muted) => handle(async (data) => {
     const { actorId, room } = await loadModerationContext(data?.room);
@@ -360,16 +527,36 @@ io.on('connection', (socket) => {
     await publishEvent('reports_changed', { room: room.name });
   }));
 
+  
   features.forEach((feature) => feature.onConnection?.(socket, featureContext));
 
-  socket.on('disconnect', () => console.log(`User disconnected: ${sender} (${socket.id})`));
-});
+  socket.on('disconnecting', async () => {
+    const rooms = [...socket.rooms].filter(
+      (room) => room !== socket.id && room !== `user:${senderId}`,
+    );
+
+    for (const room of rooms) {
+      try {
+        await broadcastRoomPresence(room, socket.id);
+      } catch (error) {
+        console.error(`Failed to update room presence: ${error.message}`);
+      }
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`User disconnected: ${sender} (${socket.id})`);
+  });
+}); // Closes io.on('connection')
 
 app.get('/health', (_req, res) => {
   const healthy = mongoose.connection.readyState === 1
     && pubClient.status === 'ready'
     && subClient.status === 'ready';
-  res.status(healthy ? 200 : 503).json({ status: healthy ? 'OK' : 'Unavailable' });
+
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'OK' : 'Unavailable',
+  });
 });
 
 async function start() {

@@ -7,6 +7,10 @@ const messageSchema = new mongoose.Schema({
     senderId: { type: String },
     clientId: { type: String, index: { unique: true, sparse: true } },
     text: { type: String, required: true },
+    reactions: [{
+        emoji: { type: String, required: true },
+        userIds: [{ type: String }],
+    }],
     deleted: { type: Boolean, default: false },
     deletedBy: { type: String },
     timestamp: { type: Date, default: Date.now }},

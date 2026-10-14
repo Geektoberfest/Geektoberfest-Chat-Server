@@ -1,0 +1,22 @@
+/* One clear focus ring for every control, shown only for keyboard focus. */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 3px solid #356b52;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #356b52;
+  color: #fff;
+  font-size: 13px;
+  transform: translateY(-200%);
+}
+.skip-link:focus { transform: translateY(0); }
+
+#message-list:focus-visible { outline-offset: -3px; }

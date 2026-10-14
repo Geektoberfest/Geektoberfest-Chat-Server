@@ -38,6 +38,13 @@ const authPassword = document.querySelector('#auth-password');
 const authSubmit = document.querySelector('#auth-submit');
 const authSwitch = document.querySelector('#auth-switch');
 const authNotice = document.querySelector('#auth-notice');
+const loadOlderBtn = document.querySelector('#load-older');
+
+const presenceLabel = document.createElement('span');
+presenceLabel.className = 'presence-label';
+presenceLabel.textContent = 'Online: waiting for users';
+roleLabel.parentElement.append(presenceLabel);
+
 
 let currentRoom = roomInput.value.trim() || 'general';
 let authMode = 'login';
@@ -45,6 +52,24 @@ let isConnected = false;
 let isRemoved = false;
 let myUserId = '';
 let roomState = { ownerId: '', moderators: [], mutedIds: [] };
+
+// Pagination state for "Load older messages".
+let hasMoreHistory = false;
+let loadingOlderMessages = false;
+let paginationGeneration = 0;
+
+function updateLoadOlderButton() {
+  if (!loadOlderBtn) return;
+  loadOlderBtn.hidden = !hasMoreHistory;
+  loadOlderBtn.disabled = loadingOlderMessages;
+}
+
+function resetPagination() {
+  paginationGeneration += 1;
+  hasMoreHistory = false;
+  loadingOlderMessages = false;
+  updateLoadOlderButton();
+}
 
 function roleOf(userId) {
   if (!userId) return 'member';
@@ -80,6 +105,8 @@ function updateComposer() {
 const outbox = [];
 // Every clientId already on screen, so a re-delivered message is not drawn twice.
 const seenClientIds = new Set();
+// Message IDs are server-generated and remain stable across history pages.
+const seenMessageIds = new Set();
 // Our own unacknowledged bubbles, so an ack can un-dim the right one.
 const pendingRows = new Map();
 // Keeps repeated reconnect failures from stomping every other notice.
@@ -99,7 +126,9 @@ setConnectionState(false);
 function clearMessages() {
   messageList.replaceChildren();
   seenClientIds.clear();
+  seenMessageIds.clear();
   pendingRows.clear();
+  resetPagination();
 }
 
 function setPendingLabel(clientId, text) {
@@ -188,7 +217,7 @@ function refreshRow(row) {
   const badges = [];
   if (role !== 'member') badges.push(role);
   if (isMuted(authorId)) badges.push('muted');
-  row.querySelector('.message-badge').textContent = badges.join(' · ');
+  row.querySelector('.message-badge').textContent = badges.join(' Â· ');
 
   const actions = row.querySelector('.message-actions');
   actions.replaceChildren();
@@ -231,7 +260,7 @@ function showPlaceholder(title, detail, loading = false) {
   const spark = document.createElement('span');
   spark.className = 'welcome-spark';
   spark.setAttribute('aria-hidden', 'true');
-  spark.textContent = '✳';
+  spark.textContent = 'âœ³';
 
   const heading = document.createElement('div');
   heading.className = 'welcome-title';
@@ -257,20 +286,55 @@ function removePlaceholder() {
   if (placeholder) placeholder.remove();
 }
 
+
+function renderReactions(row, reactions = []) {
+  const display = row.querySelector('.message-reactions');
+  if (!display) return;
+
+  display.replaceChildren();
+
+  reactions.forEach((reaction) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'reaction-button';
+    button.textContent = `${reaction.emoji} ${reaction.userIds.length}`;
+    button.title = 'Click to toggle your reaction';
+
+    if (reaction.userIds.includes(myUserId)) {
+      button.classList.add('is-selected');
+    }
+
+    button.addEventListener('click', () => {
+      socket.emit('toggle_reaction', {
+        room: currentRoom,
+        messageId: row.dataset.messageId,
+        emoji: reaction.emoji,
+      });
+    });
+
+    display.append(button);
+  });
+}
+
+
 function renderMessage(message, { pending = false } = {}) {
   const clientId = typeof message.clientId === 'string' ? message.clientId : '';
+  const messageId = typeof message.id === 'string' ? message.id : '';
+  if (messageId && seenMessageIds.has(messageId)) return;
   if (clientId && seenClientIds.has(clientId)) {
     // Already drawn. The echo is itself proof the server stored it, and it
     // carries the message ID the moderation actions need.
     const row = pendingRows.get(clientId);
     if (row && message.id) {
       row.dataset.messageId = message.id;
+      seenMessageIds.add(message.id);
       refreshRow(row);
     }
     markDelivered(clientId);
     return;
   }
   if (clientId) seenClientIds.add(clientId);
+  if (messageId) seenMessageIds.add(messageId);
 
   removePlaceholder();
   const sender = String(message.sender || 'Someone');
@@ -302,9 +366,37 @@ function renderMessage(message, { pending = false } = {}) {
   const bubble = document.createElement('p');
   bubble.className = 'message-bubble';
   bubble.textContent = text;
+
+  const reactionsDisplay = document.createElement('div');
+  reactionsDisplay.className = 'message-reactions';
+
   const actions = document.createElement('div');
   actions.className = 'message-actions';
-  content.append(meta, bubble, actions);
+
+  const reactionPicker = document.createElement('div');
+  reactionPicker.className = 'reaction-picker';
+
+  ['ðŸ‘', 'â¤ï¸', 'ðŸ˜‚', 'ðŸ˜®', 'ðŸ˜¢', 'ðŸŽ‰'].forEach((emoji) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'reaction-picker-button';
+    button.textContent = emoji;
+    button.title = `React with ${emoji}`;
+
+    button.addEventListener('click', () => {
+      if (!row.dataset.messageId || row.classList.contains('is-pending')) return;
+
+      socket.emit('toggle_reaction', {
+        room: currentRoom,
+        messageId: row.dataset.messageId,
+        emoji,
+      });
+    });
+
+    reactionPicker.append(button);
+  });
+
+  content.append(meta, bubble, reactionsDisplay, reactionPicker, actions);
   row.append(avatar, content);
   if (pending && clientId) {
     row.classList.add('is-pending');
@@ -315,6 +407,12 @@ function renderMessage(message, { pending = false } = {}) {
     pendingRows.set(clientId, row);
   }
   messageList.append(row);
+  messageList.append(row);
+
+  renderReactions(row, message.reactions || []);
+
+  if (message.deleted) markDeleted(row);
+  else refreshRow(row);
 
   if (message.deleted) markDeleted(row);
   else refreshRow(row);
@@ -484,11 +582,20 @@ socket.on('room_state', (state) => {
   refreshAllRows();
   if (isStaff()) socket.emit('list_reports', { room: currentRoom });
 });
+
 socket.on('chat_history', (history) => {
   const messages = Array.isArray(history) ? history : [];
   clearMessages();
-  if (messages.length) messages.forEach((message) => renderMessage(message));
-  else showEmptyState(currentRoom);
+  if (messages.length) {
+    messages.forEach((message) => renderMessage(message));
+    // The server sends the newest PAGE_SIZE messages; if exactly PAGE_SIZE arrived
+    // there may be older ones.  We detect this by whether the initial batch was
+    // full (20 items).  The backend page size is 20.
+    hasMoreHistory = messages.length >= 20;
+  } else {
+    showEmptyState(currentRoom);
+  }
+  updateLoadOlderButton();
 
   // Queued messages are not in history yet, so put them back on screen. Any
   // that the server did store are deduped and marked delivered instead.
@@ -496,12 +603,38 @@ socket.on('chat_history', (history) => {
     if (message.room === currentRoom) renderMessage(message, { pending: true });
   }
 });
+
+socket.on('room_presence', ({ room, users }) => {
+  if (room !== currentRoom || !Array.isArray(users)) return;
+
+  const names = users.map((user) =>
+    user.id === myUserId ? `${user.username} (you)` : user.username
+  );
+
+  presenceLabel.textContent = names.length
+    ? `Online (${names.length}): ${names.join(', ')}`
+    : 'No users online';
+});
+
+
 socket.on('receive_message', (message) => renderMessage(message));
+
+socket.on('message_reactions', ({ messageId, reactions }) => {
+  const row = [...messageList.querySelectorAll('.message-row')]
+    .find((item) => item.dataset.messageId === messageId);
+
+  if (!row) return;
+
+  row.dataset.reactions = JSON.stringify(reactions);
+  renderReactions(row, reactions);
+});
+
 socket.on('message_deleted', ({ messageId }) => {
   messageList.querySelectorAll('.message-row').forEach((row) => {
     if (row.dataset.messageId === messageId) markDeleted(row);
   });
 });
+
 socket.on('removed_from_room', ({ room }) => {
   if (room !== currentRoom) return;
   isRemoved = true;
@@ -614,6 +747,109 @@ document.querySelector('#join-button').addEventListener('click', joinRoom);
 roomInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') joinRoom();
 });
+
+if (loadOlderBtn) {
+  loadOlderBtn.addEventListener('click', () => {
+    if (loadingOlderMessages || !hasMoreHistory) return;
+
+    // Find the oldest rendered message to use as the cursor.
+    const firstRow = messageList.querySelector('.message-row[data-message-id]');
+    const cursorId = firstRow?.dataset.messageId;
+    if (!cursorId) return;
+
+    const room = currentRoom; // capture before any async await
+    const requestGeneration = paginationGeneration;
+    loadingOlderMessages = true;
+    updateLoadOlderButton();
+
+    socket.timeout(10000).emit('load_older_messages', { room, before: cursorId }, (timedOut, response) => {
+      // Ignore if the user has since switched rooms.
+      if (room !== currentRoom || requestGeneration !== paginationGeneration) return;
+
+      loadingOlderMessages = false;
+
+      if (timedOut || !response || response.error) {
+        hasMoreHistory = true; // allow retry
+        updateLoadOlderButton();
+        showNotice(response?.error || 'Could not load older messages.');
+        return;
+      }
+
+      hasMoreHistory = Boolean(response.hasMore);
+      updateLoadOlderButton();
+
+      const messages = Array.isArray(response.messages) ? response.messages : [];
+      if (messages.length === 0) return;
+
+      // Preserve scroll position: record how far the content bottom was from viewport bottom.
+      const scrollBottom = messageList.scrollHeight - messageList.scrollTop;
+
+      // Build a fragment with all older rows in chronological order (oldest first),
+      // then insert the fragment before the existing first row in one operation.
+      const fragment = document.createDocumentFragment();
+      messages.forEach((msg) => {
+        const clientId = typeof msg.clientId === 'string' ? msg.clientId : '';
+        const messageId = typeof msg.id === 'string' ? msg.id : '';
+        if (messageId && seenMessageIds.has(messageId)) return;
+        if (clientId && seenClientIds.has(clientId)) return;
+        if (clientId) seenClientIds.add(clientId);
+        if (messageId) seenMessageIds.add(messageId);
+
+        removePlaceholder();
+        const sender = String(msg.sender || 'Someone');
+        const text = String(msg.text || '');
+        const row = document.createElement('article');
+        row.className = 'message-row';
+        row.dataset.messageId = msg.id || '';
+        row.dataset.senderId = msg.senderId || '';
+
+        const avatar = document.createElement('span');
+        avatar.className = 'message-avatar';
+        avatar.textContent = sender.slice(0, 1).toUpperCase();
+
+        const content = document.createElement('div');
+        content.className = 'message-content';
+        const meta = document.createElement('div');
+        meta.className = 'message-meta';
+        const senderName = document.createElement('strong');
+        senderName.textContent = sender;
+        const badge = document.createElement('span');
+        badge.className = 'message-badge';
+        const time = document.createElement('time');
+        const date = new Date(msg.timestamp || msg.createdAt || Date.now());
+        time.textContent = Number.isNaN(date.getTime())
+          ? ''
+          : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        meta.append(senderName, badge, time);
+
+        const bubble = document.createElement('p');
+        bubble.className = 'message-bubble';
+        bubble.textContent = text;
+        const actions = document.createElement('div');
+        actions.className = 'message-actions';
+        content.append(meta, bubble, actions);
+        row.append(avatar, content);
+        fragment.append(row);
+
+        if (msg.deleted) markDeleted(row);
+        else refreshRow(row);
+        messageDecorators.forEach((decorate) => decorate(row, msg));
+      });
+
+      // Insert the entire fragment before the oldest currently-visible message.
+      const currentFirst = messageList.querySelector('.message-row');
+      if (currentFirst) {
+        messageList.insertBefore(fragment, currentFirst);
+      } else {
+        messageList.append(fragment);
+      }
+
+      // Restore scroll position so the user sees the same content they were looking at.
+      messageList.scrollTop = messageList.scrollHeight - scrollBottom;
+    });
+  });
+}
+
 
 // Features in src/features/*.js extend the chat without editing this file. A feature's
 // top-level code runs before this file does; its default export is called here, just

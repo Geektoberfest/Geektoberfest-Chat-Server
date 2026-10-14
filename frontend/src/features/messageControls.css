@@ -1,0 +1,9 @@
+.message-own-actions { display: inline-flex; gap: 4px; margin-left: auto; }
+.message-own-actions .message-action { opacity: 0; transition: opacity .15s ease; }
+.message-row:hover .message-own-actions .message-action,
+.message-own-actions .message-action:focus-visible { opacity: 1; }
+.message-edited { color: #a0a8a1; font-size: 10px; font-style: italic; }
+
+@media (hover: none) {
+  .message-own-actions .message-action { opacity: 1; }
+}

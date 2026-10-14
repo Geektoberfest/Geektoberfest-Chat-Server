@@ -5,10 +5,31 @@ import { validateMessage, validateRoom } from '../utils/validation.js';
 const trustProxy = process.env.TRUST_PROXY === 'true';
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const MAX_PAYLOAD_BYTES = 16 * 1024;
+const DEFAULT_MESSAGE_RATE_LIMIT = 10;
+const DEFAULT_CONNECTION_RATE_LIMIT = 30;
+
+function testOnlyLimit(name, defaultLimit) {
+  const configured = Number(process.env[name]);
+  return process.env.NODE_ENV === 'test' && Number.isInteger(configured) && configured > 0
+    ? configured
+    : defaultLimit;
+}
+
+const messageRateLimit = testOnlyLimit('TEST_MESSAGE_RATE_LIMIT_MAX', DEFAULT_MESSAGE_RATE_LIMIT);
+const connectionRateLimit = testOnlyLimit('TEST_CONNECTION_RATE_LIMIT_MAX', DEFAULT_CONNECTION_RATE_LIMIT);
 
 const httpLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
-const connectionLimiter = createRateLimiter({ windowMs: 60_000, max: 30 });
-const messageLimiter = createRateLimiter({ windowMs: 10_000, max: 10 });
+
+const connectionLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: connectionRateLimit,
+});
+
+const messageLimiter = createRateLimiter({
+  windowMs: 10_000,
+  max: messageRateLimit,
+});
+
 const joinLimiter = createRateLimiter({ windowMs: 10_000, max: 20 });
 
 let shuttingDown = false;
