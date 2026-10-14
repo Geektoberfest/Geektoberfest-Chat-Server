@@ -218,11 +218,17 @@ io.on('connection', (socket) => {
     if (roomDoc) socket.emit('room_state', roomState(roomDoc));
 
     try {
-      const chatHistory = await Message.find({ room }).sort({ createdAt: 1 }).limit(20).lean();
+      // Fetch the newest 20 messages then reverse so they display oldest-to-newest.
+      const chatHistory = await Message.find({ room })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(20)
+        .lean();
+      chatHistory.reverse();
       socket.emit('chat_history', chatHistory.map((message) => ({
         id: String(message._id),
         sender: message.sender,
         senderId: message.senderId,
+        clientId: message.clientId,
         text: message.deleted ? '' : message.text,
         deleted: Boolean(message.deleted),
         timestamp: message.timestamp,
@@ -239,6 +245,74 @@ io.on('connection', (socket) => {
       socket.emit('chat_error', 'Could not load chat history.');
     }
   }));
+
+  // Cursor-based pagination for older messages.
+  // The client supplies the ID of its oldest currently-loaded message as the cursor.
+  // Response shape: { messages: [...], hasMore: boolean } or { error: string }.
+  socket.on('load_older_messages', async (data, ack) => {
+    if (typeof ack !== 'function') return; // requires acknowledgement
+    try {
+      const room = cleanRoomName(data?.room);
+      const cursorId = data?.before;
+
+      if (typeof cursorId !== 'string' || !mongoose.isValidObjectId(cursorId)) {
+        return ack({ error: 'Invalid cursor.' });
+      }
+
+      // Confirm the socket is still in this room and not banned.
+      const roomDoc = await Room.findOne({ name: room }).lean();
+      if (roomDoc?.bannedIds.includes(senderId)) {
+        return ack({ error: 'You have been removed from this room.' });
+      }
+      if (!socket.rooms.has(room)) {
+        return ack({ error: 'Join the room before loading its history.' });
+      }
+
+      // Find the anchor document so we can use its (createdAt, _id) as a compound cursor.
+      // Keeping the room in this lookup prevents a cursor from another room being accepted.
+      const anchor = await Message.findOne({ _id: cursorId, room }).select('createdAt _id').lean();
+      if (!anchor) {
+        return ack({ error: 'Invalid cursor.' });
+      }
+
+      // Fetch one extra record to know whether still more history exists.
+      const PAGE_SIZE = 20;
+      const raw = await Message.find({
+        room,
+        $or: [
+          { createdAt: { $lt: anchor.createdAt } },
+          { createdAt: anchor.createdAt, _id: { $lt: anchor._id } },
+        ],
+      })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(PAGE_SIZE + 1)
+        .lean();
+
+      const hasMore = raw.length > PAGE_SIZE;
+      const page = raw.slice(0, PAGE_SIZE);
+      page.reverse(); // return in chronological order
+
+      ack({
+        messages: page.map((message) => ({
+          id: String(message._id),
+          sender: message.sender,
+          senderId: message.senderId,
+          clientId: message.clientId,
+          text: message.deleted ? '' : message.text,
+          deleted: Boolean(message.deleted),
+          timestamp: message.timestamp,
+          createdAt: message.createdAt,
+        })),
+        hasMore,
+      });
+    } catch (error) {
+      if (error instanceof UserError) {
+        return ack({ error: error.message });
+      }
+      console.error(`Failed to load older messages: ${error.message}`);
+      ack({ error: 'Could not load older messages.' });
+    }
+  });
 
   // The sender always comes from the authenticated socket, never from the payload.
   socket.on('send_message', handle(async (data, ack) => {

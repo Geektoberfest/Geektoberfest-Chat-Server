@@ -295,3 +295,130 @@ describe('roles and moderation', () => {
     expect(socket.sent('dismiss_report')[0].args[0]).toEqual({ room: 'general', reportId: 'r1' });
   });
 });
+
+describe('pagination', () => {
+  const makeHistory = (count) =>
+    Array.from({ length: count }, (_, i) => message({ id: `m-${i}`, text: `msg-${i}` }));
+
+  test('the load-older button is hidden when history has fewer than 20 messages', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', makeHistory(5));
+    expect($('#load-older').hidden).toBe(true);
+  });
+
+  test('the load-older button is shown when exactly 20 messages are received', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', makeHistory(20));
+    expect($('#load-older').hidden).toBe(false);
+  });
+
+  test('clicking load-older emits load_older_messages with the oldest message id', () => {
+    const socket = loadApp();
+    openChat(socket);
+    const history = makeHistory(20);
+    socket.serverEmit('chat_history', history);
+
+    $('#load-older').click();
+    const sent = socket.sent('load_older_messages');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].args[0]).toMatchObject({ room: 'general', before: history[0].id });
+  });
+
+  test('the button is disabled while a request is in flight', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', makeHistory(20));
+
+    $('#load-older').click();
+    expect($('#load-older').disabled).toBe(true);
+  });
+
+  test('older messages are prepended in order and button hides when history exhausted', () => {
+    const socket = loadApp();
+    openChat(socket);
+    const history = makeHistory(20); // msg-0 … msg-19
+    socket.serverEmit('chat_history', history);
+
+    $('#load-older').click();
+    const [sent] = socket.sent('load_older_messages');
+
+    // Simulate server response with 3 older messages, no more history.
+    const older = [
+      message({ id: 'old-0', text: 'oldest' }),
+      message({ id: 'old-1', text: 'older' }),
+      message({ id: 'old-2', text: 'old' }),
+    ];
+    sent.callback(null, { messages: older, hasMore: false });
+
+    // The three older messages should now appear before the original 20.
+    const bubbles = texts();
+    expect(bubbles[0]).toBe('oldest');
+    expect(bubbles[1]).toBe('older');
+    expect(bubbles[2]).toBe('old');
+    expect(bubbles[3]).toBe('msg-0');
+    expect($('#load-older').hidden).toBe(true);
+  });
+
+  test('when hasMore is true the button remains visible after loading', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', makeHistory(20));
+
+    $('#load-older').click();
+    const [sent] = socket.sent('load_older_messages');
+    sent.callback(null, { messages: makeHistory(20), hasMore: true });
+
+    expect($('#load-older').hidden).toBe(false);
+    expect($('#load-older').disabled).toBe(false);
+  });
+
+  test('an older-page response does not duplicate a message already on screen', () => {
+    const socket = loadApp();
+    openChat(socket);
+    const history = makeHistory(20);
+    socket.serverEmit('chat_history', history);
+
+    $('#load-older').click();
+    const [sent] = socket.sent('load_older_messages');
+    sent.callback(null, { messages: [history[0], message({ id: 'old-1', text: 'older' })], hasMore: false });
+
+    expect($$('.message-row')).toHaveLength(21);
+    expect(texts().filter((text) => text === 'msg-0')).toHaveLength(1);
+  });
+
+  test('pagination state resets when joining a new room', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', makeHistory(20));
+    expect($('#load-older').hidden).toBe(false);
+
+    // Switch room.
+    $('#room-input').value = 'other-room';
+    $('#join-button').click();
+
+    // After switching rooms the button should be hidden again.
+    expect($('#load-older').hidden).toBe(true);
+  });
+
+  test('a stale response from a previous room is ignored', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', makeHistory(20));
+
+    $('#load-older').click();
+    const [sent] = socket.sent('load_older_messages');
+
+    // Switch to a different room before the callback fires.
+    $('#room-input').value = 'other-room';
+    $('#join-button').click();
+    // New chat_history with fewer messages.
+    socket.serverEmit('chat_history', makeHistory(3));
+
+    // Now fire the stale callback — messages should not be prepended.
+    const oldCount = $$('.message-row').length;
+    sent.callback(null, { messages: makeHistory(5), hasMore: false });
+    expect($$('.message-row').length).toBe(oldCount);
+  });
+});

@@ -49,6 +49,9 @@ module.exports = async () => {
       REDIS_URL: `redis://127.0.0.1:${redis.port}`,
       JWT_SECRET: 'test-secret-that-is-long-enough-for-hs256-0123456789',
       FRONTEND_ORIGIN: 'http://localhost:5173',
+      // Pagination fixtures deliberately create more than the production burst limit.
+      TEST_MESSAGE_RATE_LIMIT_MAX: '1000',
+      TEST_CONNECTION_RATE_LIMIT_MAX: '100',
       // Read the client address from X-Forwarded-For, which the helpers set per request (see client.cjs).
       TRUST_PROXY: 'true',
     },
