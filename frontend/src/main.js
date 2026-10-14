@@ -243,7 +243,13 @@ function showPlaceholder(title, detail, { loading = false, error = false, icon =
   const spark = document.createElement('span');
   spark.className = `welcome-spark${loading ? ' has-spinner' : ''}`;
   spark.setAttribute('aria-hidden', 'true');
-  spark.textContent = 'âœ³';
+  if (loading) {
+    const spinner = document.createElement('span');
+    spinner.className = 'welcome-spinner';
+    spark.append(spinner);
+  } else {
+    spark.textContent = icon;
+  }
 
   const heading = document.createElement('div');
   heading.className = 'welcome-title';
