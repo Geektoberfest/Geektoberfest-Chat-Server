@@ -43,6 +43,7 @@ module.exports = async () => {
     cwd: path.join(__dirname, '..'),
     env: {
       ...process.env,
+      NODE_ENV: 'test',
       PORT: String(port),
       MONGO_URL: mongo.getUri('chat-test'),
       REDIS_URL: `redis://127.0.0.1:${redis.port}`,

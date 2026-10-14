@@ -265,3 +265,39 @@ button { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+
+.message-reactions,
+.reaction-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.reaction-picker-button,
+.reaction-button {
+  border: 1px solid #d1d5db;
+  border-radius: 16px;
+  padding: 4px 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.reaction-picker-button:hover,
+.reaction-button:hover {
+  background: #f3f4f6;
+}
+
+.reaction-button.is-selected {
+  border-color: #2563eb;
+  background: #dbeafe;
+}
+
+.presence-label {
+  color: #527564;
+  font-size: 12px;
+  margin-left: 12px;
+  overflow-wrap: anywhere;
+}

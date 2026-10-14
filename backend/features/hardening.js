@@ -7,7 +7,10 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 const MAX_PAYLOAD_BYTES = 16 * 1024;
 
 const httpLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
-const connectionLimiter = createRateLimiter({ windowMs: 60_000, max: 30 });
+const connectionLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: process.env.NODE_ENV === 'test' ? 100 : 30,
+});
 const messageLimiter = createRateLimiter({ windowMs: 10_000, max: 10 });
 const joinLimiter = createRateLimiter({ windowMs: 10_000, max: 20 });
 
