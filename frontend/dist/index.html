@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f3f5f1" />
     <title>Gather | Chat</title>
-    <script type="module" crossorigin src="/assets/index--7RbXidW.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-qJAyQaTS.css">
+    <script type="module" crossorigin src="/assets/index-Dp6G3Wdj.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CjFvZNVi.css">
   </head>
   <body>
     <div id="app">
@@ -74,8 +74,10 @@
           </details>
 
           <div id="message-list" class="message-list" role="log" aria-live="polite" aria-relevant="additions text">
-            <div class="welcome-note is-loading" data-placeholder="true">
-              <span class="welcome-spark" aria-hidden="true">✳</span>
+            <div class="welcome-note is-loading" data-placeholder="true" role="status" aria-live="polite">
+              <span class="welcome-spark has-spinner" aria-hidden="true">
+                <span class="welcome-spinner"></span>
+              </span>
               <div class="welcome-title">Loading messages</div>
               <p>Fetching the conversation.</p>
             </div>

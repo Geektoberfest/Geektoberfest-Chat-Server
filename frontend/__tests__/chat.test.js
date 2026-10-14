@@ -146,6 +146,70 @@ describe('messages', () => {
     socket.serverEmit('chat_error', 'Something went wrong.');
     expect($('#notice').textContent).toBe('Something went wrong.');
   });
+
+  test('empty room displays friendly UI with Say hello action that pre-fills composer', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', []);
+
+    expect($('.welcome-note')).not.toBeNull();
+    expect($('.welcome-title').textContent).toBe('No messages yet');
+    expect(document.body.textContent).toMatch(/Say hello to start the conversation in #general/);
+    const helloBtn = $('[data-action="say-hello"]');
+    expect(helloBtn).not.toBeNull();
+
+    helloBtn.click();
+    expect($('#message-input').value).toBe('Hello everyone! 👋');
+  });
+
+  test('joining a new room shows the loading spinner and placeholder without blank screens', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', [message({ text: 'prev' })]);
+
+    $('#room-input').value = 'random';
+    $('#join-button').click();
+
+    expect($('.welcome-note.is-loading')).not.toBeNull();
+    expect($('.welcome-spinner')).not.toBeNull();
+    expect(document.body.textContent).toMatch(/Fetching the conversation in #random/);
+  });
+
+  test('room with history displays contextual room introduction at the top', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', [message({ text: 'first' }), message({ text: 'second' })]);
+
+    expect($('.room-intro')).not.toBeNull();
+    expect($('.room-intro-title').textContent).toContain('general');
+    expect($('.room-intro-desc').textContent).toContain('Welcome to the start of the #general channel');
+    expect(texts()).toEqual(['first', 'second']);
+  });
+
+  test('chat history error displays error state with a retry button', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_error', 'Could not load chat history.');
+
+    expect($('.welcome-note.is-error')).not.toBeNull();
+    expect(document.body.textContent).toMatch(/Couldn’t load messages/);
+    const retryBtn = $('[data-action="retry-history"]');
+    expect(retryBtn).not.toBeNull();
+
+    retryBtn.click();
+    expect($('.welcome-note.is-loading')).not.toBeNull();
+    expect(socket.sent('join_room')).toHaveLength(2);
+  });
+
+  test('being removed from room displays friendly removed state instead of blank screen', () => {
+    const socket = loadApp();
+    openChat(socket);
+    socket.serverEmit('chat_history', [message({ text: 'hi' })]);
+    socket.serverEmit('removed_from_room', { room: 'general' });
+
+    expect($('.welcome-note')).not.toBeNull();
+    expect(document.body.textContent).toMatch(/Removed from room/);
+  });
 });
 
 describe('roles and moderation', () => {
