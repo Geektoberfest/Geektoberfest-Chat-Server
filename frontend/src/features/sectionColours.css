@@ -36,11 +36,13 @@ body { background: #eef7f3; }
 /* A bigger chat box on desktop: wider, and taller to fill the window. Phones keep their own sizing. */
 @media (min-width: 641px) {
   .chat-shell {
-    width: min(1600px, calc(100% - 64px));
-    height: calc(100vh - 120px);
+    width: calc(100% - 32px);
+    max-width: none;
+    height: calc(100vh - 100px);
     min-height: 640px;
-    margin: 24px auto;
+    margin: 16px auto;
     border-radius: 18px;
+    grid-template-columns: 290px minmax(0, 1fr);
   }
   .message-list { padding: 36px 44px; }
   .composer { margin-bottom: 18px; }
