@@ -2,12 +2,31 @@
 
 Realtime chat app with a Vite frontend and an Express/Socket.IO backend. MongoDB stores message history and Redis Pub/Sub broadcasts messages between backend instances.
 
+## Documentation
+
+Comprehensive guides and technical references for developers and contributors:
+
+- **[System Architecture](docs/architecture.md)**: High-level system overview, multi-instance Redis scaling, plugin architecture, and data flow.
+- **[API Reference](docs/api.md)**: Complete HTTP REST endpoints and Socket.IO real-time event schemas, payloads, and error codes.
+- **[Setup & Local Development Guide](docs/setup-guide.md)**: Step-by-step setup with Docker Compose, environment configuration, CLI client, and troubleshooting FAQs.
+- **[Testing Guide](docs/testing.md)**: Running integration and unit tests across backend and frontend.
+- **Feature Deep Dives**:
+  - [Production Hardening & Rate Limiting](docs/production-hardening.md)
+  - [Direct Messaging](docs/direct-messages.md)
+  - [Private Rooms & Invites](docs/private-rooms.md)
+  - [Message Controls (Edit & Delete)](docs/message-controls.md)
+  - [Search & Mentions](docs/search-and-mentions.md)
+  - [Typing Indicators](docs/typing-indicators.md)
+  - [Connection Feedback](docs/connection-feedback.md)
+  - [Accessibility](docs/accessibility.md)
+
 ## Local development
 
 1. Copy `backend/.env.example` to `backend/.env` and fill in `MONGO_URL`, `REDIS_URL`, and `JWT_SECRET` (any long random string, e.g. `node -e "console.log(crypto.randomBytes(32).toString('hex'))"`).
 2. In `backend/`, run `npm ci` and then `npm run dev`.
 3. Copy `frontend/.env.example` to `frontend/.env` if the backend is not at `http://localhost:5000`.
 4. In `frontend/`, run `npm ci` and then `npm run dev`.
+*(For detailed instructions and Docker Compose setup, see the [Setup Guide](docs/setup-guide.md).)*
 
 ## Deploy
 
