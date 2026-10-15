@@ -1,5 +1,6 @@
 import { requireAuth } from '../auth.js';
 import { Message } from '../models/user.js';
+import { checkRoomAccess } from '../models/roomAccess.js';
 import { SEARCH_PAGE_SIZE, buildSearchFilter } from '../utils/search.js';
 
 // GET /api/search?room=&q=&user=&before= finds messages in one room by keyword and/or username,
@@ -18,6 +19,14 @@ export async function setup({ app }) {
     if (error) return res.status(400).json({ error });
 
     try {
+      // Private rooms and bans apply to search the same as joins/writes.
+      const access = await checkRoomAccess(filter.room, req.user.id);
+      if (!access.allowed) {
+        return res.status(403).json({ error: access.reason === 'banned'
+          ? 'You have been removed from this room.'
+          : 'This room is private. Ask the owner for an invite.' });
+      }
+
       const found = await Message.find({ ...filter, deleted: { $ne: true } })
         .sort({ createdAt: -1 })
         .limit(SEARCH_PAGE_SIZE + 1)

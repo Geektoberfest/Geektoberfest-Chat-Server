@@ -12,6 +12,7 @@ import { connectDB } from './config/db.js';
 import { Message } from './models/user.js';
 import { Report, Room } from './models/moderation.js';
 import { canManageModerators, canModerate, getRole, isStaff } from './utils/permissions.js';
+import { checkRoomAccess } from './models/roomAccess.js';
 import { authRouter, authenticateSocket, getJwtSecret } from './auth.js';
 
 const REDIS_CHAT_CHANNEL = 'CHAT_ROOMS';
@@ -209,6 +210,14 @@ io.on('connection', (socket) => {
     if (roomDoc?.bannedIds.includes(senderId)) {
       throw new UserError('You have been removed from this room.');
     }
+    // Defense in depth: the privateRooms feature also blocks this in middleware,
+    // but the handler must not trust that the feature loaded.
+    const access = await checkRoomAccess(room, senderId);
+    if (!access.allowed) {
+      throw new UserError(access.reason === 'banned'
+        ? 'You have been removed from this room.'
+        : 'This room is private. Ask the owner for an invite.');
+    }
 
     socket.join(room);
     socket.emit('identity', { userId: senderId });
@@ -332,6 +341,14 @@ io.on('connection', (socket) => {
     const roomDoc = await Room.findOne({ name: room }).lean();
     if (roomDoc?.bannedIds.includes(senderId)) {
       respond({ ok: false, error: 'You have been removed from this room.' });
+      return;
+    }
+    // Private rooms reject writes without an invite, same as joins.
+    const access = await checkRoomAccess(room, senderId);
+    if (!access.allowed) {
+      respond({ ok: false, error: access.reason === 'banned'
+        ? 'You have been removed from this room.'
+        : 'This room is private. Ask the owner for an invite.' });
       return;
     }
     if (roomDoc?.mutedIds.includes(senderId)) {

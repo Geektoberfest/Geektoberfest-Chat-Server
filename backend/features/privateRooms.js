@@ -1,16 +1,8 @@
-import mongoose from 'mongoose';
 import { Room } from '../models/moderation.js';
 import { User } from '../models/user.js';
+import { RoomAccess } from '../models/roomAccess.js';
+import { loadRoomAccess } from '../models/roomAccess.js';
 import { canChangePrivacy, canJoinRoom, canManageInvites } from '../utils/privateRooms.js';
-
-// Privacy and invites live in their own collection, so the Room model and the rest of the server
-// are left untouched.
-const accessSchema = new mongoose.Schema({
-  room: { type: String, required: true, unique: true },
-  isPrivate: { type: Boolean, default: false },
-  invitedIds: { type: [String], default: [] },
-});
-const RoomAccess = mongoose.models.RoomAccess || mongoose.model('RoomAccess', accessSchema);
 
 const MAX_ROOM_LENGTH = 32;
 const MAX_USERNAME_LENGTH = 24;
@@ -26,10 +18,10 @@ function reply(socket, args, result) {
 
 async function loadState(room) {
   const [access, roomDoc] = await Promise.all([
-    RoomAccess.findOne({ room }).lean(),
+    loadRoomAccess(room),
     Room.findOne({ name: room }).lean(),
   ]);
-  return { access: access || { isPrivate: false, invitedIds: [] }, roomDoc };
+  return { access, roomDoc };
 }
 
 export function onConnection(socket) {
