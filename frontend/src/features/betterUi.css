@@ -1,0 +1,26 @@
+.conversation { position: relative; }
+/* Messages from the same person in a row: no repeated avatar or name. */
+.message-row.is-grouped { margin-top: -12px; }
+.message-row.is-grouped .message-avatar { visibility: hidden; }
+.message-row.is-grouped .message-meta strong,
+.message-row.is-grouped .message-meta time { display: none; }
+
+/* The "New messages" pill, pinned to the bottom of the conversation. */
+.jump-latest {
+  position: absolute;
+  bottom: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #356b52;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(53, 107, 82, .25);
+  cursor: pointer;
+  animation: rise-in .2s ease-out both;
+}
+.jump-latest:hover { background: #28583f; }
+.jump-latest:focus-visible { outline: 3px solid #a4c2a8; outline-offset: 2px; }

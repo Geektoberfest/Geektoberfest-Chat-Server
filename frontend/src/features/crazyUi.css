@@ -1,0 +1,77 @@
+/* Aurora background behind the whole app, drifting slowly. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  background:
+    radial-gradient(40% 40% at 20% 30%, var(--green-glow, #a4c2a8) 0%, transparent 70%),
+    radial-gradient(35% 35% at 80% 20%, var(--green-soft, #eaf1e9) 0%, transparent 70%),
+    radial-gradient(45% 45% at 60% 90%, var(--green-glow, #a4c2a8) 0%, transparent 70%);
+  opacity: .35;
+  filter: blur(40px);
+  animation: aurora 18s ease-in-out infinite alternate;
+}
+
+@keyframes aurora {
+  0% { transform: translate3d(-3%, -2%, 0) scale(1); }
+  50% { transform: translate3d(3%, 2%, 0) scale(1.06); }
+  100% { transform: translate3d(-2%, 3%, 0) scale(1.02); }
+}
+
+/* Glass look for the main chat card. */
+.chat-shell {
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+/* Bubbles spring in, and lift a touch on hover. */
+.message-row { animation: bubble-in .45s cubic-bezier(.34, 1.56, .64, 1) both; }
+.message-bubble { transition: transform .2s ease, box-shadow .2s ease; }
+.message-row:hover .message-bubble { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, .08); }
+
+@keyframes bubble-in {
+  from { opacity: 0; transform: translateY(14px) scale(.96); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Sidebar rooms tilt slightly toward the cursor. */
+.room-nav-open, .dm-thread {
+  transition: transform .18s ease, background .18s ease;
+}
+.room-nav-open:hover, .dm-thread:hover { transform: translateX(4px) rotate(-.5deg); }
+
+/* Accent picker. */
+.accent-picker { display: flex; gap: 8px; margin-top: 18px; }
+.accent-swatch {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .08);
+  cursor: pointer;
+  transition: transform .15s ease;
+}
+.accent-swatch:hover { transform: scale(1.15); }
+.accent-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--green); transform: scale(1.1); }
+
+/* Confetti burst. */
+.confetti-piece {
+  position: fixed;
+  z-index: 200;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  pointer-events: none;
+  animation: confetti .9s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+@keyframes confetti {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--dx), calc(var(--dy) + 160px)) rotate(var(--spin)); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before, .message-row, .confetti-piece { animation: none; }
+  .message-row { opacity: 1; }
+  .confetti-piece { display: none; }
+}
