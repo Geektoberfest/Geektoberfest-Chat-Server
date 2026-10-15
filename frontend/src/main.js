@@ -252,15 +252,27 @@ function markDeleted(row) {
   refreshRow(row);
 }
 
-function showPlaceholder(title, detail, loading = false) {
+function showPlaceholder(title, detail, { loading = false, error = false, icon = '✳', actionText = '', actionType = '' } = {}) {
   const note = document.createElement('div');
-  note.className = `welcome-note${loading ? ' is-loading' : ''}`;
+  note.className = `welcome-note${loading ? ' is-loading' : ''}${error ? ' is-error' : ''}`;
   note.dataset.placeholder = 'true';
+  if (loading) {
+    note.setAttribute('role', 'status');
+    note.setAttribute('aria-live', 'polite');
+  } else if (error) {
+    note.setAttribute('role', 'alert');
+  }
 
   const spark = document.createElement('span');
-  spark.className = 'welcome-spark';
+  spark.className = `welcome-spark${loading ? ' has-spinner' : ''}`;
   spark.setAttribute('aria-hidden', 'true');
-  spark.textContent = 'âœ³';
+  if (loading) {
+    const spinner = document.createElement('span');
+    spinner.className = 'welcome-spinner';
+    spark.append(spinner);
+  } else {
+    spark.textContent = icon;
+  }
 
   const heading = document.createElement('div');
   heading.className = 'welcome-title';
@@ -270,15 +282,66 @@ function showPlaceholder(title, detail, loading = false) {
   body.textContent = detail;
 
   note.append(spark, heading, body);
+
+  if (actionText && actionType) {
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.className = 'welcome-action';
+    actionBtn.dataset.action = actionType;
+    actionBtn.textContent = actionText;
+    note.append(actionBtn);
+  }
+
   messageList.replaceChildren(note);
 }
 
 function showLoadingState(room) {
-  showPlaceholder('Loading messages', `Fetching the conversation in #${room}.`, true);
+  showPlaceholder('Loading messages', `Fetching the conversation in #${room}.`, { loading: true });
 }
 
 function showEmptyState(room) {
-  showPlaceholder('No messages yet', `Say hello to start the conversation in #${room}.`);
+  showPlaceholder('No messages yet', `Say hello to start the conversation in #${room}.`, {
+    icon: '💬',
+    actionText: 'Say hello 👋',
+    actionType: 'say-hello',
+  });
+}
+
+function showErrorState(room, text = 'Could not load chat history.') {
+  showPlaceholder('Couldn’t load messages', `${text} Check your connection and try again.`, {
+    error: true,
+    icon: '⚠️',
+    actionText: 'Try again',
+    actionType: 'retry-history',
+  });
+}
+
+function showRemovedState(room) {
+  showPlaceholder('Removed from room', `You were removed from #${room} by a moderator and cannot view messages.`, {
+    icon: '🚫',
+  });
+}
+
+function renderRoomIntro(room) {
+  if (messageList.querySelector('.room-intro')) return;
+  const intro = document.createElement('div');
+  intro.className = 'room-intro';
+
+  const hash = document.createElement('span');
+  hash.className = 'room-intro-hash';
+  hash.setAttribute('aria-hidden', 'true');
+  hash.textContent = '#';
+
+  const heading = document.createElement('h2');
+  heading.className = 'room-intro-title';
+  heading.append(hash, document.createTextNode(room));
+
+  const desc = document.createElement('p');
+  desc.className = 'room-intro-desc';
+  desc.textContent = `Welcome to the start of the #${room} channel. Messages here are shared with everyone who joins.`;
+
+  intro.append(heading, desc);
+  messageList.prepend(intro);
 }
 
 function removePlaceholder() {
@@ -337,6 +400,7 @@ function renderMessage(message, { pending = false } = {}) {
   if (messageId) seenMessageIds.add(messageId);
 
   removePlaceholder();
+  renderRoomIntro(message.room || currentRoom);
   const sender = String(message.sender || 'Someone');
   const text = String(message.text || '');
   const row = document.createElement('article');
@@ -639,6 +703,7 @@ socket.on('removed_from_room', ({ room }) => {
   if (room !== currentRoom) return;
   isRemoved = true;
   clearMessages();
+  showRemovedState(room);
   updateComposer();
   showNotice('You were removed from this room by a moderator.');
 });
@@ -647,12 +712,35 @@ socket.on('reports_changed', () => {
 });
 socket.on('reports', (reports) => renderReports(Array.isArray(reports) ? reports : []));
 socket.on('chat_notice', showNotice);
-socket.on('chat_error', showNotice);
+socket.on('chat_error', (error) => {
+  showNotice(error);
+  if (error === 'Could not load chat history.') {
+    showErrorState(currentRoom, error);
+  }
+});
 
 messageList.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action]');
   if (!button) return;
+
+  if (button.dataset.action === 'say-hello') {
+    messageInput.value = 'Hello everyone! 👋';
+    messageInput.focus();
+    return;
+  }
+
+  if (button.dataset.action === 'retry-history') {
+    showLoadingState(currentRoom);
+    if (socket.connected) {
+      socket.emit('join_room', { room: currentRoom });
+    } else {
+      socket.connect();
+    }
+    return;
+  }
+
   const row = button.closest('.message-row');
+  if (!row) return;
   const { senderId: targetId, messageId } = row.dataset;
   const room = currentRoom;
 

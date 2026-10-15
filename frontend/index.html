@@ -76,8 +76,10 @@
           </div>
 
           <div id="message-list" class="message-list" role="log" aria-live="polite" aria-relevant="additions text">
-            <div class="welcome-note is-loading" data-placeholder="true">
-              <span class="welcome-spark" aria-hidden="true">✳</span>
+            <div class="welcome-note is-loading" data-placeholder="true" role="status" aria-live="polite">
+              <span class="welcome-spark has-spinner" aria-hidden="true">
+                <span class="welcome-spinner"></span>
+              </span>
               <div class="welcome-title">Loading messages</div>
               <p>Fetching the conversation.</p>
             </div>

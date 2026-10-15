@@ -179,9 +179,19 @@ button { cursor: pointer; }
 
 .welcome-note { align-self: center; margin: auto 0; padding: 26px 16px; text-align: center; animation: fade-in .45s .12s both; }
 .welcome-spark { display: inline-grid; width: 38px; height: 38px; place-items: center; border-radius: 13px; background: #f2f7e2; color: #73934e; font-size: 20px; }
+.welcome-spark.has-spinner { background: transparent; }
+.welcome-spinner { display: block; width: 28px; height: 28px; border: 3px solid rgba(53, 107, 82, .18); border-top-color: var(--green); border-radius: 50%; animation: spinner-rotate .75s linear infinite; }
 .welcome-title { margin-top: 13px; font: 700 15px 'Manrope', sans-serif; }
 .welcome-note p { margin: 7px 0 0; color: #929b94; font-size: 12px; }
-.welcome-note.is-loading .welcome-spark { animation: spark-pulse 1.1s ease-in-out infinite; }
+.welcome-note.is-loading .welcome-spark:not(.has-spinner) { animation: spark-pulse 1.1s ease-in-out infinite; }
+.welcome-action { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 7px 16px; border: 1px solid #d5e4d7; border-radius: 20px; background: #f4f8f4; color: var(--green); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .18s ease, transform .18s ease, border-color .18s ease; }
+.welcome-action:hover, .welcome-action:focus-visible { background: #e4efe4; border-color: var(--green); transform: translateY(-1px); }
+.welcome-note.is-error .welcome-spark { background: #fdf0e8; color: #c05c31; }
+.welcome-note.is-removed-state .welcome-spark { background: #fbebee; color: #a43a3a; }
+.room-intro { margin: 4px 0 16px; padding: 16px 18px; border-radius: 12px; background: #f9fbf9; border: 1px solid #edf2ec; animation: fade-in .3s ease-out both; }
+.room-intro-title { display: flex; align-items: center; gap: 4px; margin: 0; color: var(--ink); font: 700 16px 'Manrope', sans-serif; }
+.room-intro-hash { color: #799a80; font-weight: 800; }
+.room-intro-desc { margin: 6px 0 0; color: #7d8880; font-size: 12px; line-height: 1.5; }
 
 .message-row { display: flex; align-items: flex-start; gap: 10px; animation: message-in .2s ease-out both; }
 .message-avatar { width: 31px; height: 31px; background: #dceadd; color: #3d694c; font-size: 11px; }
@@ -235,6 +245,7 @@ button { cursor: pointer; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes message-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes spark-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes spinner-rotate { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   .welcome-note.is-loading .welcome-spark { animation: none; }
